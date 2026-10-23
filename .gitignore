@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Java build output
+backend/target/
+
+# IDE files
+.vscode/
+.idea/
+*.iml

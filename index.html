@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Posture Behaviour Monitor</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="app-header">
+        <h1 class="app-title">Posture Behaviour Monitor</h1>
+        <p class="app-description">
+          Real-time browser-based posture monitoring using your webcam and MediaPipe pose detection.
+        </p>
+      </header>
+
+      <main class="main-content">
+        <!-- Controls & System Status -->
+        <section class="controls-panel">
+          <div class="button-group">
+            <button id="startBtn" class="btn btn-primary" type="button">
+              <span class="btn-icon">▶</span> Start Monitoring
+            </button>
+            <button id="stopBtn" class="btn btn-secondary" type="button" disabled>
+              <span class="btn-icon">⏹</span> Stop Monitoring
+            </button>
+            <button id="calibrateBtn" class="btn btn-accent" type="button" disabled>
+              <span class="btn-icon">🎯</span> Calibrate
+            </button>
+            <button id="resetCalibrateBtn" class="btn btn-outline" type="button" disabled>
+              <span class="btn-icon">🔄</span> Reset Calibration
+            </button>
+          </div>
+
+          <!-- Dual Status Bar: Hardware/Camera Status & Posture Evaluation Status -->
+          <div class="status-row">
+            <div class="status-box" id="statusBox">
+              <span class="status-badge status-idle" id="statusBadge">Camera</span>
+              <span class="status-message" id="statusMessage">Idle - Click 'Start Monitoring' to begin</span>
+            </div>
+
+            <div class="status-box" id="postureStatusBox">
+              <span class="posture-badge posture-idle" id="postureBadge">Posture</span>
+              <span class="status-message" id="postureMessage">Not monitoring</span>
+            </div>
+          </div>
+
+          <!-- Active Sustained Deviation Warning Overlay/Banner -->
+          <div id="warningAlert" class="warning-alert hidden" role="alert">
+            <span class="warning-icon">⚠️</span>
+            <div class="warning-content">
+              <strong id="warningTitle" class="warning-title">Posture Deviation Detected</strong>
+              <p id="warningMessage" class="warning-text">Head / Neck Angle exceeded baseline threshold for 5s.</p>
+            </div>
+          </div>
+
+          <!-- Calibration Instruction & Progress Banner -->
+          <div id="calibrationBanner" class="calibration-banner hidden" role="region" aria-label="Calibration Progress">
+            <div class="calibration-header">
+              <span class="calibration-icon">⏳</span>
+              <p class="calibration-instruction">
+                Sit in your normal working posture and remain still during calibration.
+              </p>
+            </div>
+            <div class="calibration-progress-container">
+              <div class="progress-track">
+                <div id="calibrationProgressBar" class="progress-bar" style="width: 0%"></div>
+              </div>
+              <span id="calibrationCountdown" class="countdown-text">5s</span>
+            </div>
+          </div>
+
+          <!-- System/Hardware Error Alert -->
+          <div id="errorAlert" class="error-alert hidden" role="alert">
+            <span class="error-icon">⚠️</span>
+            <span id="errorMessage" class="error-message"></span>
+          </div>
+        </section>
+
+        <!-- Posture Metrics & Baseline Display -->
+        <section class="metrics-panel">
+          <div class="metrics-header">
+            <h2 class="metrics-title">Posture Metrics &amp; Baseline</h2>
+            <span id="baselineTimestamp" class="baseline-timestamp">Baseline: Not calibrated</span>
+          </div>
+
+          <div class="metrics-grid">
+            <!-- Head / Neck Angle Card -->
+            <div class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-name">Head / Neck Angle</span>
+                <span class="metric-unit">vs. Vertical</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Current:</span>
+                <span id="currHeadNeck" class="metric-value">--</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Personal Baseline:</span>
+                <span id="baseHeadNeck" class="metric-value metric-baseline">--</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Deviation:</span>
+                <span id="devHeadNeck" class="metric-value metric-deviation">--</span>
+              </div>
+              <div class="metric-footer">
+                <span class="threshold-tag">Threshold: &plusmn;10.0&deg; (5s)</span>
+                <span class="metric-note">Frontal view measures lateral neck tilt (not forward-head poke)</span>
+              </div>
+            </div>
+
+            <!-- Torso Inclination Card -->
+            <div class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-name">Torso Inclination</span>
+                <span class="metric-unit">Lateral Lean vs. Vertical</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Current:</span>
+                <span id="currTorso" class="metric-value">--</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Personal Baseline:</span>
+                <span id="baseTorso" class="metric-value metric-baseline">--</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Deviation:</span>
+                <span id="devTorso" class="metric-value metric-deviation">--</span>
+              </div>
+              <div class="metric-footer">
+                <span class="threshold-tag">Threshold: &plusmn;10.0&deg; (5s)</span>
+                <span class="metric-note">Requires hips in frame (desk view may occlude hips)</span>
+              </div>
+            </div>
+
+            <!-- Shoulder Alignment Card -->
+            <div class="metric-card">
+              <div class="metric-card-header">
+                <span class="metric-name">Shoulder Alignment</span>
+                <span class="metric-unit">Elevation vs. Horizontal</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Current:</span>
+                <span id="currShoulder" class="metric-value">--</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Personal Baseline:</span>
+                <span id="baseShoulder" class="metric-value metric-baseline">--</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">Deviation:</span>
+                <span id="devShoulder" class="metric-value metric-deviation">--</span>
+              </div>
+              <div class="metric-footer">
+                <span class="threshold-tag">Threshold: &plusmn;8.0&deg; (5s)</span>
+                <span class="metric-note">Level shoulders = ~0.0&deg;</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Session Statistics & Event History (Milestone 3) -->
+        <section class="session-analytics-panel">
+          <div class="analytics-header">
+            <h2 class="analytics-title">Session Statistics &amp; Event Log</h2>
+            <span class="config-summary-pill">Development Defaults &bull; 5s Persistence &bull; 10s Cooldown</span>
+          </div>
+
+          <!-- Session Numerical Stats Bar -->
+          <div class="stats-bar">
+            <div class="stat-card">
+              <span class="stat-label">Total Alerts</span>
+              <span id="statAlerts" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Deviation Events</span>
+              <span id="statEvents" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Longest Sustained</span>
+              <span id="statLongest" class="stat-value">--</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Session Duration</span>
+              <span id="statDuration" class="stat-value">00:00</span>
+            </div>
+          </div>
+
+          <div class="insights-actions">
+            <button id="generateInsightsBtn" class="primary-button" type="button" disabled>Generate AI Posture Insights</button>
+            <span id="insightsStatus" role="status">Stop a monitoring session and save it to generate insights.</span>
+          </div>
+          <section id="insightsPanel" class="insights-panel" hidden aria-live="polite">
+            <div class="insights-panel-heading"><h3>🤖 AI Posture Insights</h3><span id="insightsProvider" class="insights-provider"></span></div>
+            <div class="insights-summary-grid">
+              <div><span class="insights-label">Session risk indicator</span><strong id="insightsRisk">--</strong></div>
+              <div><span class="insights-label">Session duration</span><strong id="insightsDuration">--</strong></div>
+              <div><span class="insights-label">Deviation events</span><strong id="insightsEvents">--</strong></div>
+            </div>
+            <p id="insightsSummary" class="insights-copy"></p>
+            <p id="insightsRecommendation" class="insights-copy"></p>
+            <p id="insightsNote" class="insights-note"></p>
+          </section>
+
+          <!-- Recent Events Table -->
+          <div class="events-container">
+            <h3 class="events-subtitle">Recent Sustained Deviation Events</h3>
+            <div class="events-table-wrapper">
+              <table class="events-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Measurement</th>
+                    <th>Peak Deviation</th>
+                    <th>Duration</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+                <tbody id="eventsTableBody">
+                  <tr id="emptyEventsRow">
+                    <td colspan="5" class="empty-events-cell">No sustained posture events in this session.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Saved Sessions History Panel (Phase 6) -->
+        <section class="session-analytics-panel session-history-panel" id="sessionHistorySection">
+          <div class="analytics-header">
+            <div>
+              <h2 class="analytics-title">Saved Sessions History</h2>
+              <span class="section-subtext">Past monitoring sessions persisted in MySQL database</span>
+            </div>
+            <button id="refreshHistoryBtn" class="btn btn-outline btn-sm" type="button">
+              <span class="btn-icon">🔄</span> Refresh History
+            </button>
+          </div>
+
+          <div id="historyLoading" class="history-status-box hidden">
+            <span>⏳</span> Loading saved sessions from backend...
+          </div>
+
+          <div id="historyError" class="history-error-box hidden" role="alert">
+            <span class="warning-icon">⚠️</span>
+            <span id="historyErrorMsg">Could not load session history. Backend might be offline.</span>
+          </div>
+
+          <div id="historyTableContainer" class="events-table-wrapper">
+            <table class="events-table history-table">
+              <thead>
+                <tr>
+                  <th>Session #</th>
+                  <th>Date &amp; Time</th>
+                  <th>Duration</th>
+                  <th>Alerts</th>
+                  <th>Events</th>
+                  <th>Longest</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr>
+                  <td colspan="7" class="empty-events-cell">Click "Refresh History" or complete a session to load history.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Selected Historical Session Details Card -->
+          <div id="historyDetailCard" class="history-detail-card hidden">
+            <div class="history-detail-header">
+              <h3 id="historyDetailTitle">Session Details</h3>
+              <button id="closeHistoryDetailBtn" class="btn btn-outline btn-sm" type="button">✕ Close Details</button>
+            </div>
+            <div class="history-detail-stats">
+              <div class="hd-stat-item"><span class="hd-label">Started:</span> <strong id="hdStarted">--</strong></div>
+              <div class="hd-stat-item"><span class="hd-label">Ended:</span> <strong id="hdEnded">--</strong></div>
+              <div class="hd-stat-item"><span class="hd-label">Duration:</span> <strong id="hdDuration">--</strong></div>
+              <div class="hd-stat-item"><span class="hd-label">Total Alerts:</span> <strong id="hdAlerts">--</strong></div>
+              <div class="hd-stat-item"><span class="hd-label">Total Events:</span> <strong id="hdEventsCount">--</strong></div>
+              <div class="hd-stat-item"><span class="hd-label">Longest Sustained:</span> <strong id="hdLongest">--</strong></div>
+            </div>
+
+            <div class="events-container" style="margin-top: 1rem;">
+              <h4 class="events-subtitle">Session Deviation Events</h4>
+              <div class="events-table-wrapper">
+                <table class="events-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Measurement</th>
+                      <th>Type</th>
+                      <th>Peak Deviation</th>
+                      <th>Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody id="hdEventsTableBody">
+                    <tr><td colspan="5" class="empty-events-cell">No deviation events recorded for this session.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Historical Session AI Insights Section -->
+            <div class="history-insights-container" style="margin-top: 1.25rem;">
+              <div class="insights-actions">
+                <button id="hdFetchInsightsBtn" class="primary-button" type="button">Load AI Posture Insights</button>
+                <span id="hdInsightsStatus" role="status"></span>
+              </div>
+              <div id="hdInsightsPanel" class="insights-panel hidden">
+                <div class="insights-panel-heading">
+                  <h4>🤖 AI Posture Insights</h4>
+                  <span id="hdInsightsProvider" class="insights-provider"></span>
+                </div>
+                <div class="insights-summary-grid">
+                  <div><span class="insights-label">Session Risk</span><strong id="hdInsightsRisk">--</strong></div>
+                  <div><span class="insights-label">Duration</span><strong id="hdInsightsDuration">--</strong></div>
+                  <div><span class="insights-label">Events</span><strong id="hdInsightsEvents">--</strong></div>
+                </div>
+                <p id="hdInsightsSummary" class="insights-copy"></p>
+                <p id="hdInsightsRecommendation" class="insights-copy"></p>
+                <p id="hdInsightsNote" class="insights-note"></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Webcam and Canvas Stream Display -->
+        <section class="preview-panel">
+          <div class="video-wrapper" id="videoWrapper">
+            <div id="cameraPlaceholder" class="camera-placeholder">
+              <div class="placeholder-icon">📷</div>
+              <p class="placeholder-text">Camera feed is currently inactive</p>
+              <span class="placeholder-hint">Click "Start Monitoring" to enable webcam and posture tracking</span>
+            </div>
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="outputCanvas"></canvas>
+          </div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <p>Milestone 3: Temporal Persistence, Warning Alerts &amp; Session Analytics &bull; MCA Project</p>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
