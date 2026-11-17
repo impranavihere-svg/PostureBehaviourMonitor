@@ -491,6 +491,11 @@ export class UIController {
     // Reset insights panel
     if (this.hdInsightsPanel) this.hdInsightsPanel.classList.add('hidden');
     if (this.hdInsightsStatus) this.hdInsightsStatus.textContent = '';
+    if (this.hdInsightsSummary) this.hdInsightsSummary.innerHTML = '';
+    if (this.hdInsightsRecommendation) {
+      this.hdInsightsRecommendation.innerHTML = '';
+      this.hdInsightsRecommendation.classList.add('hidden');
+    }
     if (this.hdFetchInsightsBtn) {
       this.hdFetchInsightsBtn.disabled = false;
       this.hdFetchInsightsBtn.setAttribute('data-session-id', session.id);
@@ -510,6 +515,39 @@ export class UIController {
   }
 
   /**
+   * Safely renders summary markdown inside the specified container.
+   * @param {HTMLElement|null} container
+   * @param {string|null} summaryText
+   */
+  renderInsightSummary(container, summaryText) {
+    if (!container) return;
+    container.innerHTML = renderSafeMarkdown(summaryText || 'No summary returned.');
+  }
+
+  /**
+   * Safely renders recommendation text with structured styling.
+   * @param {HTMLElement|null} container
+   * @param {string|null} recommendationText
+   */
+  renderInsightRecommendation(container, recommendationText) {
+    if (!container) return;
+    if (!recommendationText || typeof recommendationText !== 'string' || !recommendationText.trim()) {
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    // Strip leading "Recommendation:" if already present in text to avoid duplication
+    const cleaned = recommendationText.replace(/^(\*\*|__)?Recommendation(?::)?\1(?::)?\s*/i, '').trim();
+    container.innerHTML = `
+      <div class="insight-recommendation-box">
+        <span class="insight-recommendation-badge">💡 Practical Recommendation</span>
+        <div class="insight-recommendation-text">${renderSafeMarkdown(cleaned)}</div>
+      </div>
+    `;
+  }
+
+  /**
    * Renders AI insights for a selected historical session.
    * @param {object} data
    */
@@ -519,11 +557,145 @@ export class UIController {
     this.hdInsightsRisk.textContent = data.riskLevel || 'Unavailable';
     this.hdInsightsDuration.textContent = `${data.durationMinutes ?? 0} min`;
     this.hdInsightsEvents.textContent = data.deviationEvents ?? 0;
-    this.hdInsightsSummary.textContent = data.summary || 'No summary returned.';
-    this.hdInsightsRecommendation.textContent = data.recommendation ? `Recommendation: ${data.recommendation}` : '';
+    this.renderInsightSummary(this.hdInsightsSummary, data.summary);
+    this.renderInsightRecommendation(this.hdInsightsRecommendation, data.recommendation);
     this.hdInsightsProvider.textContent = data.provider || 'Rule-based';
     this.hdInsightsNote.textContent = data.note || data.method || 'Not a medical assessment.';
 
     this.hdInsightsPanel.classList.remove('hidden');
   }
+}
+
+/**
+ * Safely escapes HTML special characters to prevent XSS / markup injection.
+ * @param {string} str
+ * @returns {string}
+ */
+export function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Formats inline Markdown elements (bold, italic, code).
+ * @param {string} str
+ * @returns {string}
+ */
+export function formatInlineMarkdown(str) {
+  if (!str) return '';
+  return str
+    .replace(/\*\*([^*]+)\*\*/g, '<strong class="insight-bold">$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong class="insight-bold">$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*([^*]|$)/g, '$1<em>$2</em>$3')
+    .replace(/`([^`]+)`/g, '<code class="insight-code">$1</code>');
+}
+
+/**
+ * Formats body lines into paragraphs and list structures.
+ * @param {string} bodyText
+ * @returns {string}
+ */
+export function formatBodyLines(bodyText) {
+  if (!bodyText) return '';
+  const lines = bodyText.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return '';
+
+  let html = '';
+  let inUl = false;
+  let inOl = false;
+
+  for (const line of lines) {
+    const ulMatch = line.match(/^[-*•]\s+(.+)$/);
+    const olMatch = line.match(/^(\d+)\.\s+(.+)$/);
+
+    if (ulMatch) {
+      if (inOl) { html += '</ol>'; inOl = false; }
+      if (!inUl) { html += '<ul class="insight-list">'; inUl = true; }
+      html += `<li>${formatInlineMarkdown(ulMatch[1])}</li>`;
+    } else if (olMatch) {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (!inOl) { html += '<ol class="insight-list">'; inOl = true; }
+      html += `<li>${formatInlineMarkdown(olMatch[2])}</li>`;
+    } else {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (inOl) { html += '</ol>'; inOl = false; }
+      html += `<p class="insight-text">${formatInlineMarkdown(line)}</p>`;
+    }
+  }
+
+  if (inUl) html += '</ul>';
+  if (inOl) html += '</ol>';
+  return html;
+}
+
+/**
+ * Safely parses and renders Markdown text into sanitized HTML structure.
+ * Converts bold sections (**Heading:** text) and Markdown headings (# Heading)
+ * into styled section containers while escaping all HTML injection vectors.
+ * @param {string} text
+ * @returns {string}
+ */
+export function renderSafeMarkdown(text) {
+  if (!text || typeof text !== 'string') return '';
+  const escaped = escapeHtml(text.trim());
+  const rawBlocks = escaped.split(/\n\s*\n+/).map(b => b.trim()).filter(Boolean);
+  if (rawBlocks.length === 0) return '';
+
+  const processed = [];
+  for (let i = 0; i < rawBlocks.length; i++) {
+    const b = rawBlocks[i];
+
+    // Markdown # heading
+    const hMatch = b.match(/^(#{1,4})\s+(.+)$/);
+    if (hMatch) {
+      const title = hMatch[2].trim();
+      if (i + 1 < rawBlocks.length && !rawBlocks[i + 1].match(/^(#{1,4})\s+/) && !rawBlocks[i + 1].match(/^(\*\*|__).+\1(?::)?$/)) {
+        processed.push({ type: 'section', title, body: rawBlocks[i + 1] });
+        i++;
+      } else {
+        processed.push({ type: 'heading', title });
+      }
+      continue;
+    }
+
+    // Bold heading: **Heading:** or **Heading**
+    const firstLineEnd = b.indexOf('\n');
+    const firstLine = (firstLineEnd === -1 ? b : b.substring(0, firstLineEnd)).trim();
+    const restLines = firstLineEnd === -1 ? '' : b.substring(firstLineEnd + 1).trim();
+
+    const boldMatch = firstLine.match(/^(\*\*|__)(.+?)(?::)?\1(?::)?(?:\s*-\s*|\s*:\s*|\s+)?(.*)$/);
+    if (boldMatch) {
+      const title = boldMatch[2].trim();
+      const firstLineRest = boldMatch[3].trim();
+      const inlineBody = firstLineRest ? (firstLineRest + (restLines ? '\n' + restLines : '')) : restLines;
+
+      if (inlineBody) {
+        processed.push({ type: 'section', title, body: inlineBody });
+      } else if (i + 1 < rawBlocks.length && !rawBlocks[i + 1].match(/^(#{1,4})\s+/) && !rawBlocks[i + 1].match(/^(\*\*|__).+\1(?::)?$/)) {
+        processed.push({ type: 'section', title, body: rawBlocks[i + 1] });
+        i++;
+      } else {
+        processed.push({ type: 'heading', title });
+      }
+      continue;
+    }
+
+    // Regular body block
+    processed.push({ type: 'body', body: b });
+  }
+
+  return processed.map(item => {
+    if (item.type === 'section') {
+      return `<div class="insight-section"><h5 class="insight-section-title">${formatInlineMarkdown(item.title)}</h5><div class="insight-section-body">${formatBodyLines(item.body)}</div></div>`;
+    }
+    if (item.type === 'heading') {
+      return `<h5 class="insight-section-title">${formatInlineMarkdown(item.title)}</h5>`;
+    }
+    return `<div class="insight-section-body">${formatBodyLines(item.body)}</div>`;
+  }).join('');
 }

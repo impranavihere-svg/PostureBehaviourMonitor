@@ -18,7 +18,7 @@ public class PostureSession {
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<PostureEvent> events = new ArrayList<>();
 
-    public Long getId(){return id;} public Instant getStartedAt(){return startedAt;} public void setStartedAt(Instant v){startedAt=v;}
+    public Long getId(){return id;} public void setId(Long id){this.id=id;} public Instant getStartedAt(){return startedAt;} public void setStartedAt(Instant v){startedAt=v;}
     public Instant getEndedAt(){return endedAt;} public void setEndedAt(Instant v){endedAt=v;}
     public long getDurationSeconds(){return durationSeconds;} public void setDurationSeconds(long v){durationSeconds=v;}
     public int getTotalAlerts(){return totalAlerts;} public void setTotalAlerts(int v){totalAlerts=v;}

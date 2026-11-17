@@ -35,7 +35,7 @@ let lastSavedSessionId = null;
 let cachedSessions = [];
 const insightsButton = document.getElementById('generateInsightsBtn');
 const insightsStatus = document.getElementById('insightsStatus');
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8765/api';
 
 /**
  * Initialize application state from localStorage and fetch saved sessions.
@@ -531,8 +531,8 @@ if (insightsButton) {
       document.getElementById('insightsRisk').textContent = data.riskLevel || 'Unavailable';
       document.getElementById('insightsDuration').textContent = `${data.durationMinutes ?? 0} min`;
       document.getElementById('insightsEvents').textContent = data.deviationEvents ?? 0;
-      document.getElementById('insightsSummary').textContent = data.summary || 'No summary returned.';
-      document.getElementById('insightsRecommendation').textContent = data.recommendation ? `Recommendation: ${data.recommendation}` : '';
+      ui.renderInsightSummary(document.getElementById('insightsSummary'), data.summary);
+      ui.renderInsightRecommendation(document.getElementById('insightsRecommendation'), data.recommendation);
       document.getElementById('insightsProvider').textContent = data.provider || 'Rule-based';
       document.getElementById('insightsNote').textContent = data.note || data.method || 'Not a medical assessment.';
       panel.hidden = false;

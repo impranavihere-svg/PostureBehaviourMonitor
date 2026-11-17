@@ -7,6 +7,9 @@ dist/
 .env
 .env.*
 !.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
 # Java build output
 backend/target/
@@ -15,3 +18,6 @@ backend/target/
 .vscode/
 .idea/
 *.iml
+
+# Local runtime logs
+backend/startup-log.txt
